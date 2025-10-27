@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Robot Cannon - Kid-Friendly Zombie Shooter</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div id="game-container">
+        <div id="start-screen" class="screen">
+            <h1>🤖 ROBOT CANNON ADVENTURE 🤖</h1>
+            <p>Help our friendly robot defend the city from silly zombies!</p>
+            <div class="controls-info">
+                <p><strong>Controls:</strong></p>
+                <p>🏃 WASD - Move Around</p>
+                <p>🖱️ Mouse - Aim & Shoot</p>
+                <p>⏸️ P - Pause Game</p>
+            </div>
+            <button id="start-btn" class="game-btn">START ADVENTURE!</button>
+        </div>
+
+        <div id="game-screen" class="screen" style="display: none;">
+            <div id="hud">
+                <div class="hud-item">
+                    <span class="hud-label">❤️ Health:</span>
+                    <div id="health-bar">
+                        <div id="health-fill"></div>
+                    </div>
+                </div>
+                <div class="hud-item">
+                    <span class="hud-label">🎯 Score:</span>
+                    <span id="score">0</span>
+                </div>
+                <div class="hud-item">
+                    <span class="hud-label">🔫 Ammo:</span>
+                    <span id="ammo">∞</span>
+                </div>
+                <div class="hud-item">
+                    <span class="hud-label">⏰ Time:</span>
+                    <span id="time">0:00</span>
+                </div>
+            </div>
+            <canvas id="game-canvas"></canvas>
+            <div id="pause-overlay" style="display: none;">
+                <h2>⏸️ GAME PAUSED</h2>
+                <p>Press P to resume</p>
+            </div>
+        </div>
+
+        <div id="game-over-screen" class="screen" style="display: none;">
+            <h2>🎮 ADVENTURE COMPLETE!</h2>
+            <p>Great job defending the city!</p>
+            <div id="final-stats">
+                <p>Final Score: <span id="final-score">0</span></p>
+                <p>Zombies Defeated: <span id="zombies-defeated">0</span></p>
+                <p>Survival Time: <span id="survival-time">0:00</span></p>
+            </div>
+            <button id="restart-btn" class="game-btn">PLAY AGAIN!</button>
+        </div>
+    </div>
+
+    <script src="game.js"></script>
+</body>
+</html>
