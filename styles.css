@@ -189,7 +189,7 @@ p {
     font-weight: 700;
 }
 
-#health-bar {
+#health-bar, #xp-bar {
     width: 100px;
     height: 15px;
     background: rgba(255, 255, 255, 0.5);
@@ -206,13 +206,21 @@ p {
     width: 100%;
 }
 
-#pause-overlay {
+#xp-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #FFD700, #FFA500, #FF8C00);
+    border-radius: 8px;
+    transition: width 0.3s ease;
+    width: 0%;
+}
+
+#pause-overlay, #level-transition {
     position: absolute;
     top: 0;
     left: 0;
     width: 100%;
     height: 100%;
-    background: rgba(0, 0, 0, 0.7);
+    background: rgba(0, 0, 0, 0.8);
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -220,6 +228,25 @@ p {
     z-index: 20;
     color: white;
     font-size: 1.5em;
+}
+
+#level-transition {
+    background: linear-gradient(135deg, rgba(255, 107, 107, 0.9), rgba(78, 205, 196, 0.9));
+    text-align: center;
+}
+
+#level-transition h2 {
+    font-family: 'Fredoka One', cursive;
+    font-size: 3em;
+    margin-bottom: 20px;
+    text-shadow: 3px 3px 0px rgba(0, 0, 0, 0.3);
+    animation: pulse 2s ease-in-out infinite;
+}
+
+#level-transition p {
+    font-size: 1.5em;
+    margin: 10px 0;
+    font-weight: 600;
 }
 
 #final-stats {

@@ -5,6 +5,7 @@ class Game {
         this.ctx = null;
         this.gameState = 'start'; // start, playing, paused, gameOver
         this.lastTime = 0;
+        this.frameCount = 0;
         this.keys = {};
         this.mouse = { x: 0, y: 0, clicked: false };
         
@@ -13,6 +14,47 @@ class Game {
         this.startTime = Date.now();
         this.lastBossSpawn = Date.now();
         this.zombiesDefeated = 0;
+        
+        // Level and XP system
+        this.level = 1;
+        this.experience = 0;
+        this.experienceToNext = 100;
+        this.levelPhase = 'wave'; // 'wave', 'wave-boss', 'level-boss', 'transition'
+        this.currentWave = 1;
+        this.wavesPerLevel = 3;
+        this.currentMap = 'city';
+        this.currentBoss = null;
+        this.zombiesInWave = 0;
+        this.zombiesKilledInWave = 0;
+        
+        // Map configurations
+        this.maps = {
+            city: {
+                name: '🏙️ City Streets',
+                background: { top: '#87CEEB', middle: '#98FB98', bottom: '#8FBC8F' },
+                theme: 'Urban adventure through zombie-infested streets'
+            },
+            park: {
+                name: '🌳 Zombie Park',
+                background: { top: '#98FB98', middle: '#90EE90', bottom: '#228B22' },
+                theme: 'Peaceful park turned spooky playground'
+            },
+            space: {
+                name: '🚀 Space Station',
+                background: { top: '#191970', middle: '#4B0082', bottom: '#2F2F2F' },
+                theme: 'Zero gravity zombie mayhem'
+            },
+            underwater: {
+                name: '🌊 Underwater Base',
+                background: { top: '#006994', middle: '#0080FF', bottom: '#004080' },
+                theme: 'Deep sea zombie adventure'
+            },
+            desert: {
+                name: '🏜️ Desert Outpost',
+                background: { top: '#F0E68C', middle: '#DEB887', bottom: '#D2691E' },
+                theme: 'Sandy wasteland survival'
+            }
+        };
         
         // Game objects
         this.player = null;
@@ -146,6 +188,11 @@ class Game {
         if (this.audioContext && this.audioContext.state === 'suspended') {
             this.audioContext.resume();
         }
+        
+        // Start first wave
+        setTimeout(() => {
+            this.spawnWave();
+        }, 1000);
     }
     
     restartGame() {
@@ -155,6 +202,17 @@ class Game {
         this.zombiesDefeated = 0;
         this.startTime = Date.now();
         this.lastBossSpawn = Date.now();
+        
+        // Reset level system
+        this.level = 1;
+        this.experience = 0;
+        this.experienceToNext = 100;
+        this.levelPhase = 'wave';
+        this.currentWave = 1;
+        this.currentMap = 'city';
+        this.currentBoss = null;
+        this.zombiesInWave = 0;
+        this.zombiesKilledInWave = 0;
         
         // Reset player
         this.player = new Player(this.canvas.width / 2, this.canvas.height / 2);
@@ -168,6 +226,11 @@ class Game {
         // Hide game over screen
         document.getElementById('game-over-screen').style.display = 'none';
         document.getElementById('game-screen').style.display = 'block';
+        
+        // Start first wave
+        setTimeout(() => {
+            this.spawnWave();
+        }, 1000);
     }
     
     spawnZombie() {
@@ -220,8 +283,230 @@ class Game {
         }
     }
     
+    // XP and Level System
+    gainExperience(amount) {
+        this.experience += amount;
+        
+        // Create XP particle effect
+        this.createParticles(this.player.x, this.player.y - 30, '#FFD700', 3);
+        
+        // Check for level up
+        if (this.experience >= this.experienceToNext) {
+            this.levelUp();
+        }
+    }
+    
+    levelUp() {
+        this.level++;
+        this.experience -= this.experienceToNext;
+        this.experienceToNext = Math.floor(this.experienceToNext * 1.3); // Increase XP requirement
+        
+        // Heal player on level up
+        this.player.health = Math.min(this.player.maxHealth, this.player.health + 30);
+        
+        // Level up effects
+        this.createParticles(this.player.x, this.player.y, '#FFD700', 10);
+        this.playSound(600, 0.5, 'sine');
+    }
+    
+    checkWaveProgress() {
+        // Check wave completion based on current phase
+        if (this.levelPhase === 'wave') {
+            // Count only regular zombies (not bosses)
+            const regularZombies = this.zombies.filter(zombie => !zombie.isWaveBoss && !zombie.isLevelBoss).length;
+            const waveProgress = `zombiesInWave=${this.zombiesInWave}, zombiesKilled=${this.zombiesKilledInWave}, regularZombiesAlive=${regularZombies}`;
+            
+            // Log every 60 frames (about once per second) to avoid spam
+            if (this.frameCount % 60 === 0) {
+                console.log(`Wave progress: ${waveProgress}, total zombies: ${this.zombies.length}`);
+                if (this.zombies.length > 0) {
+                    console.log('Zombie types:', this.zombies.map(z => {
+                        if (z.isWaveBoss) return 'WaveBoss';
+                        if (z.isLevelBoss) return 'LevelBoss';
+                        return 'Regular';
+                    }));
+                }
+            }
+            
+            // SIMPLIFIED CONDITION: If we've killed enough zombies for this wave and no regular zombies remain
+            if (this.zombiesInWave > 0 && this.zombiesKilledInWave >= this.zombiesInWave) {
+                console.log('Wave kill count reached! Checking for regular zombies...');
+                if (regularZombies === 0) {
+                    console.log('No regular zombies left! Spawning wave boss...');
+                    this.levelPhase = 'wave-boss';
+                    this.spawnWaveBoss();
+                } else {
+                    console.log(`Still ${regularZombies} regular zombies alive, waiting...`);
+                }
+            }
+        } else if (this.levelPhase === 'wave-boss') {
+            // Check if wave boss is defeated
+            if (this.currentBoss && this.currentBoss.health <= 0) {
+                this.currentWave++;
+                this.zombiesKilledInWave = 0;
+                this.zombiesInWave = 0;
+                this.gainExperience(25); // Bonus XP for wave boss
+                
+                if (this.currentWave > this.wavesPerLevel) {
+                    // Time for level boss
+                    this.levelPhase = 'level-boss';
+                    this.spawnLevelBoss();
+                } else {
+                    // Start next wave
+                    this.levelPhase = 'wave';
+                    setTimeout(() => {
+                        this.spawnWave();
+                    }, 2000);
+                }
+            }
+        } else if (this.levelPhase === 'level-boss') {
+            // Check if level boss is defeated
+            if (this.currentBoss && this.currentBoss.health <= 0) {
+                this.gainExperience(100); // Big bonus XP for level boss
+                this.levelPhase = 'transition';
+                
+                // Advance to next level and map
+                setTimeout(() => {
+                    this.advanceToNextLevel();
+                }, 2000);
+            }
+        }
+    }
+    
+    spawnWave() {
+        // Calculate zombies for this wave
+        this.zombiesInWave = Math.min(4 + this.level + this.currentWave, 12);
+        this.zombiesKilledInWave = 0;
+        
+        console.log(`Spawning wave ${this.currentWave} with ${this.zombiesInWave} zombies, level phase: ${this.levelPhase}`);
+        
+        // Spawn zombies with staggered timing
+        for (let i = 0; i < this.zombiesInWave; i++) {
+            setTimeout(() => {
+                if (this.levelPhase === 'wave') { // Only spawn if still in wave phase
+                    console.log(`Spawning zombie ${i + 1}/${this.zombiesInWave}`);
+                    this.spawnZombie();
+                } else {
+                    console.log(`Skipping zombie spawn ${i + 1}, phase is now: ${this.levelPhase}`);
+                }
+            }, i * 800); // Spawn every 800ms
+        }
+    }
+    
+    spawnWaveBoss() {
+        // Spawn wave boss closer to center but not too close to player
+        let x, y;
+        const centerX = this.canvas.width / 2;
+        const centerY = this.canvas.height / 2;
+        const playerX = this.player.x;
+        const playerY = this.player.y;
+        
+        // Find a position that's on-screen but not too close to player
+        let attempts = 0;
+        do {
+            const angle = Math.random() * Math.PI * 2;
+            const distance = 150 + Math.random() * 200; // 150-350 pixels from center
+            x = centerX + Math.cos(angle) * distance;
+            y = centerY + Math.sin(angle) * distance;
+            
+            // Keep within screen bounds with some margin
+            x = Math.max(50, Math.min(this.canvas.width - 50, x));
+            y = Math.max(50, Math.min(this.canvas.height - 50, y));
+            
+            attempts++;
+        } while (attempts < 10 && Math.sqrt((x - playerX) ** 2 + (y - playerY) ** 2) < 100);
+        
+        console.log(`Spawning wave boss at (${Math.round(x)}, ${Math.round(y)}) - canvas size: ${this.canvas.width}x${this.canvas.height}`);
+        
+        this.currentBoss = new BossZombie(x, y);
+        // Wave bosses are smaller/weaker than level bosses
+        this.currentBoss.health = 60 + (this.level * 10);
+        this.currentBoss.maxHealth = this.currentBoss.health;
+        this.currentBoss.radius = 30; // Slightly smaller
+        this.currentBoss.isWaveBoss = true;
+        
+        this.zombies.push(this.currentBoss);
+        this.playSound(180, 0.7, 'sawtooth'); // Wave boss sound
+    }
+    
+    spawnLevelBoss() {
+        // Clear any remaining zombies
+        this.zombies = [];
+        
+        // Spawn level boss closer to center but not too close to player
+        let x, y;
+        const centerX = this.canvas.width / 2;
+        const centerY = this.canvas.height / 2;
+        const playerX = this.player.x;
+        const playerY = this.player.y;
+        
+        // Find a position that's on-screen but not too close to player
+        let attempts = 0;
+        do {
+            const angle = Math.random() * Math.PI * 2;
+            const distance = 200 + Math.random() * 250; // 200-450 pixels from center
+            x = centerX + Math.cos(angle) * distance;
+            y = centerY + Math.sin(angle) * distance;
+            
+            // Keep within screen bounds with some margin
+            x = Math.max(60, Math.min(this.canvas.width - 60, x));
+            y = Math.max(60, Math.min(this.canvas.height - 60, y));
+            
+            attempts++;
+        } while (attempts < 10 && Math.sqrt((x - playerX) ** 2 + (y - playerY) ** 2) < 120);
+        
+        console.log(`Spawning level boss at (${Math.round(x)}, ${Math.round(y)}) - canvas size: ${this.canvas.width}x${this.canvas.height}`);
+        
+        this.currentBoss = new BossZombie(x, y);
+        // Level bosses are much stronger
+        this.currentBoss.health = 150 + (this.level * 30);
+        this.currentBoss.maxHealth = this.currentBoss.health;
+        this.currentBoss.radius = 40; // Larger than wave bosses
+        this.currentBoss.damage = 30 + (this.level * 5);
+        this.currentBoss.isLevelBoss = true;
+        
+        this.zombies.push(this.currentBoss);
+        this.playSound(120, 1.2, 'sawtooth'); // Deep level boss sound
+    }
+    
+    advanceToNextLevel() {
+        // Change map first
+        const mapNames = Object.keys(this.maps);
+        const currentIndex = mapNames.indexOf(this.currentMap);
+        const nextIndex = (currentIndex + 1) % mapNames.length;
+        this.currentMap = mapNames[nextIndex];
+        
+        // Reset wave state
+        this.currentWave = 1;
+        this.levelPhase = 'wave';
+        this.zombiesKilledInWave = 0;
+        this.zombiesInWave = 0;
+        
+        // Show transition and start new level
+        this.showMapTransition();
+    }
+    
+    showMapTransition() {
+        // Show transition screen
+        const transitionDiv = document.getElementById('level-transition');
+        
+        document.getElementById('transition-title').textContent = '🎉 LEVEL COMPLETE!';
+        document.getElementById('transition-map').textContent = `Now entering: ${this.maps[this.currentMap].name}`;
+        
+        transitionDiv.style.display = 'flex';
+        
+        setTimeout(() => {
+            transitionDiv.style.display = 'none';
+            this.levelPhase = 'wave';
+            // Start the first wave of the new map
+            this.spawnWave();
+        }, 3000);
+    }
+    
     update(deltaTime) {
         if (this.gameState !== 'playing') return;
+        
+        this.frameCount++;
         
         // Update player
         this.player.update(this.keys, deltaTime, this.canvas.width, this.canvas.height);
@@ -239,7 +524,29 @@ class Game {
         
         // Update zombies
         this.zombies.forEach((zombie, index) => {
-            zombie.update(this.player.x, this.player.y, deltaTime);
+            if (zombie instanceof BossZombie) {
+                zombie.update(deltaTime, this.player, this.canvas);
+                
+                // Check boss projectile collisions with player
+                zombie.projectiles.forEach((projectile, projIndex) => {
+                    if (this.checkCollision(projectile, this.player)) {
+                        if (this.player.takeDamage(projectile.damage)) {
+                            this.playSound(150, 0.3, 'sawtooth'); // Damage sound
+                            
+                            // Create damage particles
+                            this.createParticles(this.player.x, this.player.y, '#ff6b6b', 5);
+                            
+                            if (this.player.health <= 0) {
+                                this.gameOver();
+                            }
+                        }
+                        // Remove projectile after hit
+                        zombie.projectiles.splice(projIndex, 1);
+                    }
+                });
+            } else {
+                zombie.update(this.player.x, this.player.y, deltaTime);
+            }
             
             // Check collision with player
             if (this.checkCollision(zombie, this.player)) {
@@ -288,12 +595,45 @@ class Game {
                     if (zombie.health <= 0) {
                         this.score += zombie.points;
                         this.zombiesDefeated++;
+                        
+                        // Track wave progress
+                        if (this.levelPhase === 'wave' && !zombie.isWaveBoss && !zombie.isLevelBoss) {
+                            this.zombiesKilledInWave++;
+                            console.log(`Regular zombie killed! Progress: ${this.zombiesKilledInWave}/${this.zombiesInWave}`);
+                        }
+                        
+                        // Give XP based on zombie type
+                        let xpGain = 10;
+                        if (zombie.isWaveBoss) {
+                            xpGain = 25;
+                        } else if (zombie.isLevelBoss) {
+                            xpGain = 50;
+                        }
+                        this.gainExperience(xpGain);
+                        
                         this.zombies.splice(zombieIndex, 1);
                         
                         // Death particles
                         this.createParticles(zombie.x, zombie.y, '#98FB98', 6);
                         this.playSound(300, 0.2, 'square'); // Zombie death sound
                     }
+                }
+            });
+            
+            // Check bullet-boss projectile collisions (bullets can destroy projectiles)
+            this.zombies.forEach(zombie => {
+                if (zombie instanceof BossZombie && bulletIndex < this.bullets.length) {
+                    zombie.projectiles.forEach((projectile, projIndex) => {
+                        if (this.checkCollision(this.bullets[bulletIndex], projectile)) {
+                            // Remove both bullet and projectile
+                            this.bullets.splice(bulletIndex, 1);
+                            zombie.projectiles.splice(projIndex, 1);
+                            
+                            // Create hit particles
+                            this.createParticles(projectile.x, projectile.y, projectile.color, 3);
+                            this.playSound(400, 0.2, 'sine'); // Projectile destroyed sound
+                        }
+                    });
                 }
             });
         });
@@ -306,17 +646,10 @@ class Game {
             }
         });
         
-        // Spawn zombies
-        if (Math.random() < 0.005) { // 0.5% chance per frame
-            this.spawnZombie();
-        }
+        // Check wave and level progress
+        this.checkWaveProgress();
         
-        // Spawn boss every minute
-        const currentTime = Date.now();
-        if (currentTime - this.lastBossSpawn > 60000) { // 60 seconds
-            this.spawnBossZombie();
-            this.lastBossSpawn = currentTime;
-        }
+        // No random spawning - waves are controlled by checkWaveProgress
         
         // Spawn power-ups
         this.spawnPowerUp();
@@ -340,6 +673,16 @@ class Game {
     
     updateUI() {
         document.getElementById('score').textContent = this.score;
+        document.getElementById('level').textContent = this.level;
+        document.getElementById('current-map').textContent = this.maps[this.currentMap].name;
+        
+        // Update XP display with numbers
+        document.getElementById('xp-display').textContent = `${this.experience} / ${this.experienceToNext}`;
+        
+        // Update wave display
+        document.getElementById('wave-display').textContent = `${this.currentWave} / ${this.wavesPerLevel}`;
+        
+        // Update health bar
         document.getElementById('health-fill').style.width = (this.player.health / this.player.maxHealth * 100) + '%';
         
         const elapsed = Date.now() - this.startTime;
@@ -364,16 +707,17 @@ class Game {
     }
     
     render() {
-        // Clear canvas with gradient background
+        // Clear canvas with current map's gradient background
+        const mapConfig = this.maps[this.currentMap];
         const gradient = this.ctx.createLinearGradient(0, 0, 0, this.canvas.height);
-        gradient.addColorStop(0, '#87CEEB');
-        gradient.addColorStop(0.7, '#98FB98');
-        gradient.addColorStop(1, '#8FBC8F');
+        gradient.addColorStop(0, mapConfig.background.top);
+        gradient.addColorStop(0.7, mapConfig.background.middle);
+        gradient.addColorStop(1, mapConfig.background.bottom);
         this.ctx.fillStyle = gradient;
         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
         
-        // Draw some clouds for atmosphere
-        this.drawClouds();
+        // Draw map-specific atmospheric effects
+        this.drawMapEffects();
         
         if (this.gameState === 'playing' || this.gameState === 'paused') {
             // Draw all game objects
@@ -382,6 +726,31 @@ class Game {
             this.bullets.forEach(bullet => bullet.draw(this.ctx));
             this.zombies.forEach(zombie => zombie.draw(this.ctx));
             this.player.draw(this.ctx, this.mouse.x, this.mouse.y);
+            
+            // Draw level-specific UI
+            this.drawLevelUI();
+        }
+    }
+    
+    drawMapEffects() {
+        const time = Date.now() * 0.0001;
+        
+        switch (this.currentMap) {
+            case 'city':
+                this.drawClouds();
+                break;
+            case 'park':
+                this.drawTrees();
+                break;
+            case 'space':
+                this.drawStars();
+                break;
+            case 'underwater':
+                this.drawBubbles();
+                break;
+            case 'desert':
+                this.drawSandDunes();
+                break;
         }
     }
     
@@ -398,6 +767,113 @@ class Game {
             this.ctx.arc(x + 25, y, 35, 0, Math.PI * 2);
             this.ctx.arc(x + 50, y, 30, 0, Math.PI * 2);
             this.ctx.fill();
+        }
+    }
+    
+    drawTrees() {
+        // Simple tree silhouettes for park
+        this.ctx.fillStyle = 'rgba(34, 139, 34, 0.3)';
+        for (let i = 0; i < 4; i++) {
+            const x = (i * 300) % this.canvas.width;
+            const y = this.canvas.height - 80;
+            
+            // Tree trunk
+            this.ctx.fillRect(x - 5, y, 10, 40);
+            // Tree top
+            this.ctx.beginPath();
+            this.ctx.arc(x, y, 25, 0, Math.PI * 2);
+            this.ctx.fill();
+        }
+    }
+    
+    drawStars() {
+        // Twinkling stars for space
+        this.ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+        const time = Date.now() * 0.001;
+        
+        for (let i = 0; i < 20; i++) {
+            const x = (i * 73) % this.canvas.width;
+            const y = (i * 47) % (this.canvas.height / 2);
+            const twinkle = 0.5 + 0.5 * Math.sin(time + i);
+            
+            this.ctx.globalAlpha = twinkle;
+            this.ctx.fillRect(x - 1, y - 1, 2, 2);
+        }
+        this.ctx.globalAlpha = 1;
+    }
+    
+    drawBubbles() {
+        // Floating bubbles for underwater
+        const time = Date.now() * 0.0005;
+        this.ctx.strokeStyle = 'rgba(173, 216, 230, 0.6)';
+        this.ctx.lineWidth = 2;
+        
+        for (let i = 0; i < 8; i++) {
+            const x = (i * 150 + time * 30) % (this.canvas.width + 50);
+            const y = this.canvas.height - ((time * 50 + i * 100) % (this.canvas.height + 100));
+            const size = 10 + (i % 3) * 5;
+            
+            this.ctx.beginPath();
+            this.ctx.arc(x, y, size, 0, Math.PI * 2);
+            this.ctx.stroke();
+        }
+    }
+    
+    drawSandDunes() {
+        // Sand dunes for desert
+        this.ctx.fillStyle = 'rgba(210, 180, 140, 0.4)';
+        const time = Date.now() * 0.00005;
+        
+        for (let i = 0; i < 3; i++) {
+            const x = (time * 10 + i * 400) % (this.canvas.width + 200) - 100;
+            const y = this.canvas.height - 60 - i * 20;
+            
+            this.ctx.beginPath();
+            this.ctx.ellipse(x, y, 80, 30, 0, 0, Math.PI * 2);
+            this.ctx.fill();
+        }
+    }
+    
+    drawLevelUI() {
+        // Show current phase
+        let phaseText = '';
+        let phaseColor = '#FFD700';
+        
+        switch (this.levelPhase) {
+            case 'wave':
+                if (this.zombiesInWave > 0) {
+                    const remaining = this.zombiesInWave - this.zombiesKilledInWave;
+                    phaseText = `Wave ${this.currentWave}: ${remaining} zombies left`;
+                } else {
+                    phaseText = `Wave ${this.currentWave}`;
+                }
+                phaseColor = '#4ecdc4';
+                break;
+            case 'wave-boss':
+                phaseText = `Wave ${this.currentWave - 1} Boss!`;
+                phaseColor = '#ffa726';
+                break;
+            case 'level-boss':
+                phaseText = 'LEVEL BOSS FIGHT!';
+                phaseColor = '#ff6b6b';
+                break;
+            case 'transition':
+                phaseText = 'LEVEL COMPLETE!';
+                phaseColor = '#FFD700';
+                break;
+        }
+        
+        if (phaseText) {
+            this.ctx.font = 'bold 24px Nunito';
+            this.ctx.fillStyle = phaseColor;
+            this.ctx.strokeStyle = '#000000';
+            this.ctx.lineWidth = 3;
+            this.ctx.textAlign = 'center';
+            
+            this.ctx.strokeText(phaseText, this.canvas.width / 2, 50);
+            this.ctx.fillText(phaseText, this.canvas.width / 2, 50);
+            
+            this.ctx.textAlign = 'left';
         }
     }
     
@@ -819,11 +1295,21 @@ class BossZombie extends Zombie {
     constructor(x, y) {
         super(x, y);
         this.radius = 35;
-        this.speed = 30;
+        this.speed = 80;
         this.health = 100;
         this.maxHealth = 100;
         this.damage = 25;
         this.points = 50;
+        
+        // Special ability properties
+        this.lastAbilityTime = 0;
+        this.abilityPause = false;
+        this.abilityPauseTime = 0;
+        this.teleportCooldown = 3000; // 3 seconds
+        this.shootCooldown = 2000; // 2 seconds
+        this.chargeCooldown = 4000; // 4 seconds
+        this.poisonCooldown = 2500; // 2.5 seconds
+        this.projectiles = [];
         
         // Generate random boss variant
         this.variant = Math.floor(Math.random() * 4); // 4 different types
@@ -1019,6 +1505,165 @@ class BossZombie extends Zombie {
         ctx.fillRect(this.x - 25, this.y - 50, 50, 6);
         ctx.fillStyle = 'rgba(0, 255, 0, 0.8)';
         ctx.fillRect(this.x - 25, this.y - 50, 50 * (this.health / this.maxHealth), 6);
+        
+        // Draw projectiles
+        this.projectiles.forEach(projectile => {
+            ctx.fillStyle = projectile.color;
+            ctx.shadowColor = projectile.color;
+            ctx.shadowBlur = 10;
+            ctx.beginPath();
+            ctx.arc(projectile.x, projectile.y, projectile.radius, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.shadowBlur = 0;
+        });
+    }
+    
+    update(deltaTime, player, canvas) {
+        // Handle ability pause (when teleporting or charging)
+        if (this.abilityPause) {
+            this.abilityPauseTime -= deltaTime;
+            if (this.abilityPauseTime <= 0) {
+                this.abilityPause = false;
+            }
+            return; // Don't move during ability pause
+        }
+        
+        // Call parent update for normal movement with correct parameters
+        super.update(player.x, player.y, deltaTime);
+        
+        // Update projectiles
+        this.projectiles = this.projectiles.filter(projectile => {
+            projectile.x += projectile.vx * deltaTime / 1000;
+            projectile.y += projectile.vy * deltaTime / 1000;
+            projectile.life -= deltaTime;
+            
+            // Remove if expired or off screen
+            return projectile.life > 0 && 
+                   projectile.x > -50 && projectile.x < canvas.width + 50 &&
+                   projectile.y > -50 && projectile.y < canvas.height + 50;
+        });
+        
+        // Use special abilities based on variant
+        const currentTime = Date.now();
+        const timeSinceLastAbility = currentTime - this.lastAbilityTime;
+        
+        switch (this.variant) {
+            case 0: // Fire Boss - Shoots fireballs
+                if (timeSinceLastAbility >= this.shootCooldown) {
+                    this.shootFireball(player);
+                    this.lastAbilityTime = currentTime;
+                }
+                break;
+            case 1: // Ice Boss - Teleports near player
+                if (timeSinceLastAbility >= this.teleportCooldown) {
+                    this.teleportNearPlayer(player, canvas);
+                    this.lastAbilityTime = currentTime;
+                }
+                break;
+            case 2: // Shadow Boss - Charges at player
+                if (timeSinceLastAbility >= this.chargeCooldown) {
+                    this.chargeAtPlayer(player);
+                    this.lastAbilityTime = currentTime;
+                }
+                break;
+            case 3: // Poison Boss - Shoots poison clouds
+                if (timeSinceLastAbility >= this.poisonCooldown) {
+                    this.shootPoisonCloud(player);
+                    this.lastAbilityTime = currentTime;
+                }
+                break;
+        }
+    }
+    
+    shootFireball(player) {
+        const dx = player.x - this.x;
+        const dy = player.y - this.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        
+        const speed = 300;
+        const vx = (dx / distance) * speed;
+        const vy = (dy / distance) * speed;
+        
+        this.projectiles.push({
+            x: this.x,
+            y: this.y,
+            vx: vx,
+            vy: vy,
+            radius: 8,
+            color: '#FF4500',
+            life: 3000,
+            damage: 20
+        });
+    }
+    
+    teleportNearPlayer(player, canvas) {
+        // Teleport to a position near the player but not too close
+        const angle = Math.random() * Math.PI * 2;
+        const distance = 100 + Math.random() * 100; // 100-200 pixels away
+        
+        let newX = player.x + Math.cos(angle) * distance;
+        let newY = player.y + Math.sin(angle) * distance;
+        
+        // Keep within canvas bounds
+        newX = Math.max(this.radius, Math.min(canvas.width - this.radius, newX));
+        newY = Math.max(this.radius, Math.min(canvas.height - this.radius, newY));
+        
+        this.x = newX;
+        this.y = newY;
+        
+        // Brief pause after teleport
+        this.abilityPause = true;
+        this.abilityPauseTime = 500;
+    }
+    
+    chargeAtPlayer(player) {
+        const dx = player.x - this.x;
+        const dy = player.y - this.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        
+        // Store original speed and increase it for charge
+        this.originalSpeed = this.speed;
+        this.speed = 200; // Much faster during charge
+        
+        // Set charge duration
+        this.abilityPause = true;
+        this.abilityPauseTime = 1500; // 1.5 second charge
+        
+        // Reset speed after charge
+        setTimeout(() => {
+            if (this.originalSpeed) {
+                this.speed = this.originalSpeed;
+                delete this.originalSpeed;
+            }
+        }, 1500);
+    }
+    
+    shootPoisonCloud(player) {
+        // Shoot multiple poison projectiles in a spread
+        for (let i = 0; i < 3; i++) {
+            const dx = player.x - this.x;
+            const dy = player.y - this.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            const spreadAngle = (i - 1) * 0.3; // -0.3, 0, 0.3 radians spread
+            const baseAngle = Math.atan2(dy, dx);
+            const finalAngle = baseAngle + spreadAngle;
+            
+            const speed = 200;
+            const vx = Math.cos(finalAngle) * speed;
+            const vy = Math.sin(finalAngle) * speed;
+            
+            this.projectiles.push({
+                x: this.x,
+                y: this.y,
+                vx: vx,
+                vy: vy,
+                radius: 6,
+                color: '#32CD32',
+                life: 4000,
+                damage: 15
+            });
+        }
     }
 }
 

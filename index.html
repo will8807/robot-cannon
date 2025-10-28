@@ -29,12 +29,24 @@
                     </div>
                 </div>
                 <div class="hud-item">
-                    <span class="hud-label">🎯 Score:</span>
-                    <span id="score">0</span>
+                    <span class="hud-label">⭐ Level:</span>
+                    <span id="level">1</span>
                 </div>
                 <div class="hud-item">
-                    <span class="hud-label">🔫 Ammo:</span>
-                    <span id="ammo">∞</span>
+                    <span class="hud-label">✨ XP:</span>
+                    <span id="xp-display">0 / 100</span>
+                </div>
+                <div class="hud-item">
+                    <span class="hud-label">🌊 Wave:</span>
+                    <span id="wave-display">1 / 3</span>
+                </div>
+                <div class="hud-item">
+                    <span class="hud-label">�️ Map:</span>
+                    <span id="current-map">City Streets</span>
+                </div>
+                <div class="hud-item">
+                    <span class="hud-label">🎯 Score:</span>
+                    <span id="score">0</span>
                 </div>
                 <div class="hud-item">
                     <span class="hud-label">⏰ Time:</span>
@@ -42,6 +54,11 @@
                 </div>
             </div>
             <canvas id="game-canvas"></canvas>
+            <div id="level-transition" style="display: none;">
+                <h2 id="transition-title">🎉 LEVEL COMPLETE!</h2>
+                <p id="transition-map">Next: Space Station</p>
+                <p>Get ready for new challenges!</p>
+            </div>
             <div id="pause-overlay" style="display: none;">
                 <h2>⏸️ GAME PAUSED</h2>
                 <p>Press P to resume</p>
